@@ -1,0 +1,124 @@
+from ts_benchmark.baselines.msd_efr.layers.linear_extractor_cluster import Linear_extractor_cluster
+import torch.nn as nn
+from einops import rearrange
+from ts_benchmark.baselines.msd_efr.utils.masked_attention import Mahalanobis_mask, Encoder, EncoderLayer, FullAttention, AttentionLayer
+import torch
+from ts_benchmark.baselines.msd_efr.layers.Autoformer_EncDec import series_decomp
+from ts_benchmark.baselines.msd_efr.layers.RevIN import RevIN
+
+class Decomp_MS(nn.Module):
+    def __init__(self, config):
+        super(Decomp_MS, self).__init__()
+        self.cluster = Linear_extractor_cluster(config)
+        self.CI = config.CI
+        self.n_vars = config.enc_in
+        self.mask_generator = Mahalanobis_mask(config.seq_len)
+        self.Channel_transformer = Encoder(
+            [
+                EncoderLayer(
+                    AttentionLayer(
+                        FullAttention(
+                            False,           ### change
+                            config.factor,
+                            attention_dropout=config.dropout,
+                            output_attention=config.output_attention,
+                        ),
+                        config.d_model,
+                        config.n_heads,
+                    ),
+                    config.d_model,
+                    config.d_ff,
+                    dropout=config.dropout,
+                    activation=config.activation,
+                )
+                for _ in range(config.e_layers)
+            ],
+            norm_layer=torch.nn.LayerNorm(config.d_model)
+        )
+
+
+        self.linear_head = nn.Sequential(nn.Linear(config.d_model, config.pred_len), nn.Dropout(config.fc_dropout))
+
+        ######################################              change                        #####################################
+        self.kernel_list = [24, 12, 6, 3]
+        self.decomp_list = [
+            series_decomp(kernel_size=kernel) for kernel in self.kernel_list
+        ]
+        self.cluster_s = Linear_extractor_cluster(config)
+        self.cluster_t = Linear_extractor_cluster(config)
+
+        self.linear_concat = nn.Linear(len(self.kernel_list),1)
+        self.revin = RevIN(self.n_vars)
+
+
+    def forward(self, input):
+        # x: [batch_size, seq_len, n_vars]
+        B, L, C = input.shape
+        num_parts = len(self.kernel_list)
+
+        #######################################            norm                             #############
+        input = self.revin(input, "norm")
+        #######################################            norm                             #############
+
+        #######################################            season & trend List             #####################################
+        season_list = []
+        trend_list = []
+        for i in range(len(self.kernel_list)):
+            season, trend = self.decomp_list[i](input)
+            season_list.append(season)
+            trend_list.append(trend)
+        # print([season.shape for season in season_list])
+        # [torch.Size([32, 512, 7]), torch.Size([32, 512, 7]), torch.Size([32, 512, 7]), torch.Size([32, 512, 7])]
+        season_list = [rearrange(s, 'b l c -> (b c) l 1') for s in season_list]
+        trend_list = [rearrange(t, 'b l c -> (b c) l 1') for t in trend_list]
+        # print([season.shape for season in season_list])
+        # [torch.Size([224, 512, 1]), torch.Size([224, 512, 1]), torch.Size([224, 512, 1]), torch.Size([224, 512, 1])]
+        #######################################            season & trend List             #####################################
+
+        ####################          moe input         #################
+        s_concat = torch.cat(season_list, dim=0)
+        t_concat = torch.cat(trend_list, dim=0)
+        # print(s_concat.shape)       # torch.Size([896, 512, 1])
+        ####################          moe input         #################
+        s_moe_embed, L_importance_s = self.cluster_s(s_concat)
+        t_moe_embed, L_importance_t = self.cluster_t(t_concat)
+        # print(s_moe_embed.shape)    # torch.Size([896, 256, 1])
+
+        s_chunks = torch.chunk(s_moe_embed, num_parts, dim=0)
+        t_chunks = torch.chunk(t_moe_embed, num_parts, dim=0)
+        s_list = [rearrange(s, '(b c) l 1 -> b l c', c=C) for s in s_chunks]
+        t_list = [rearrange(t, '(b c) l 1 -> b l c', c=C) for t in t_chunks]
+        # print([season.shape for season in s_list])
+        # [torch.Size([32, 256, 7]), torch.Size([32, 256, 7]), torch.Size([32, 256, 7]), torch.Size([32, 256, 7])]
+
+        decomp_out_list = [s + t for s, t in zip(s_list, t_list)]
+        decomp_out = torch.stack(decomp_out_list, dim=-1)
+        # print(decomp_out.shape)     #torch.Size([32, 256, 7, 4])
+        temporal_feature = self.linear_concat(decomp_out).squeeze(-1)
+        # print(temporal_feature.shape)     # torch.Size([32, 256, 7])
+        #--------------------------------------------------------------------------------------------------------------#
+
+
+
+        # B x d_model x n_vars -> B x n_vars x d_model
+        temporal_feature = rearrange(temporal_feature, 'b d n -> b n d')
+        if self.n_vars > 1:
+
+            ################    w/o CCM    ###############
+
+            # changed_input = rearrange(input, 'b l n -> b n l')
+            # channel_mask = self.mask_generator(changed_input)
+
+            channel_group_feature, attention = self.Channel_transformer(x=temporal_feature, attn_mask=None)
+            ################    w/o CCM    ###############
+
+            output = self.linear_head(channel_group_feature)
+        else:
+            output = temporal_feature
+            output = self.linear_head(output)
+
+        output = rearrange(output, 'b n d -> b d n')
+        # print('O',output.shape)     # torch.Size([32, 96, 7])
+        ######################
+        output = self.revin(output, "denorm")
+        return output, L_importance_s+L_importance_t
