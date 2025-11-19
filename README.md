@@ -32,7 +32,7 @@ Together, they form the **MSD-EFR framework**, enhancing prediction stability an
 
 ### **Framework Architecture**
 
-![Alt Text](pic/framwork3.pdf)
+![Alt Text](pic/framwork_3.pdf)
 
 
 
