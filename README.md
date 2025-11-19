@@ -36,6 +36,40 @@ Together, they form the **MSD-EFR framework**, enhancing prediction stability an
 
 
 
+## 🚀 Quick Start
+
+### Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### Prepare datasets
+
+Place ETTh1, Weather, and other datasets into:
+```bash
+./data/
+```
+
+### Train the model
+```bash
+python experiments/train.py --config configs/ETTh1.yaml
+```
+
+### Evaluate the model
+```bash
+python experiments/test.py --model_path saved_models/msd_efr.pth
+```
+
+### Visualize samples + gate routing
+```bash
+python experiments/visualize.py
+```
+
+## 📊 Experimental Results
+
+![Visualization Example](pic/e5.pdf)
+
+
 
 
 
