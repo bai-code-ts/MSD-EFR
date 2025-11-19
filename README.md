@@ -67,7 +67,7 @@ python experiments/visualize.py
 
 ## 📊 Experimental Results
 
-[Visualization Example (PDF)](pic/e5.pdf)
+![Visualization Example](pic/visual.png)
 
 
 
