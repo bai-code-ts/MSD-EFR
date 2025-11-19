@@ -28,3 +28,17 @@ Together, they form the **MSD-EFR framework**, enhancing prediction stability an
 
 ---
 
+## 🧩 Framework Overview
+
+### **Framework Architecture**
+
+![Alt Text](pic/framwork3.pdf)
+
+
+
+
+
+
+
+
+
