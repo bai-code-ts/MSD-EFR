@@ -32,7 +32,7 @@ Together, they form the **MSD-EFR framework**, enhancing prediction stability an
 
 ### **Framework Architecture**
 
-![framework](./pic/framwork_3.pdf)
+![framework](pic/framework.jpg)
 
 
 
@@ -67,7 +67,7 @@ python experiments/visualize.py
 
 ## 📊 Experimental Results
 
-![Visualization Example](pic/visual.png)
+![Visualization Example](pic/visual.jpg)
 
 
 
