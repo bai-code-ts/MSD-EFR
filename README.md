@@ -25,3 +25,22 @@ MoTE (Mixture of Temporal Experts): models seasonal patterns in the time domain.
 MoFE (Mixture of Frequency Experts): models trend patterns in the frequency domain, capable of capturing small frequency variations even when the trend curves look similar in the time domain.
 
 Together, they form the MSD-EFR architecture and enhance prediction stability.
+
+🚀 Quick Start
+Install dependencies
+pip install -r requirements.txt
+
+Prepare datasets
+
+Place ETTh1, Weather, and other datasets under:
+
+./data/
+
+Train a model
+python experiments/train.py --config configs/ETTh1.yaml
+
+Evaluate
+python experiments/test.py --model_path saved_models/msd_efr.pth
+
+Visualization (samples and gate weights)
+python experiments/visualize.py
